@@ -1,0 +1,40 @@
+name: Abstimmungsdaten holen
+
+on:
+  schedule:
+    - cron: '17 2 * * *'   # jede Nacht 03:17 MEZ (Fair-Use der API: Abrufe nachts)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['daten.mjs', 'scripts/daten-holen.mjs', '.github/workflows/daten.yml']
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: daten
+  cancel-in-progress: false
+
+jobs:
+  holen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/daten-holen.mjs
+      - name: Änderungen speichern
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "daten-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/bundestag.json
+          if git diff --cached --quiet; then echo "Keine Änderung"; exit 0; fi
+          git commit -m "Abstimmungsdaten aktualisiert"
+          git push
+          # Pages neu bauen lassen (Pushes mit dem Action-Token lösen das nicht immer aus)
+          gh api -X POST "repos/${{ github.repository }}/pages/builds" || true
